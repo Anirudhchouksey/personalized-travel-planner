@@ -3,7 +3,11 @@ from typing import Any, Dict, List, Optional
 from app.schemas.recommendation import (
     DestinationDiscoveryRequest,
     DestinationOption,
-    DestinationRecommendationResponse
+    DestinationRecommendationResponse,
+    ActivityRecommendationRequest,
+    ActivityRecommendationResponse,
+    ActivityItem,
+    RecommendationRefineRequest
 )
 from app.services.ai.factory import get_llm_provider
 from app.services.prompts.builder import PromptBuilder
@@ -67,5 +71,71 @@ class RecommendationEngine:
             generated_at=datetime.now(timezone.utc).isoformat(),
             provider_used=provider.name
         )
+
+    @staticmethod
+    async def recommend_activities(
+        request: ActivityRecommendationRequest,
+        provider_override: Optional[str] = None
+    ) -> ActivityRecommendationResponse:
+        provider = get_llm_provider(provider_override)
+        system_prompt = PromptBuilder.get_system_prompt()
+        user_prompt = PromptBuilder.build_activity_recommendations_prompt(request.model_dump())
+
+        raw_result = await provider.generate_structured(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            expected_root_key="attractions"
+        )
+
+        def parse_items(items_data: list, default_cat: str) -> List[ActivityItem]:
+            parsed = []
+            for item in items_data:
+                parsed.append(ActivityItem(
+                    name=item.get("name", "Local Spot"),
+                    category=item.get("category", default_cat),
+                    description=item.get("description", ""),
+                    estimated_cost=float(item.get("estimated_cost", 0.0)),
+                    currency=item.get("currency", request.currency),
+                    location_name=item.get("location_name"),
+                    duration_minutes=int(item.get("duration_minutes", 90)),
+                    practical_tips=item.get("practical_tips"),
+                    verification_status=item.get("verification_status", "estimated")
+                ))
+            return parsed
+
+        return ActivityRecommendationResponse(
+            destination=request.destination,
+            attractions=parse_items(raw_result.get("attractions", []), "attraction"),
+            dining=parse_items(raw_result.get("dining", []), "dining"),
+            adventure=parse_items(raw_result.get("adventure", []), "adventure"),
+            cultural_experiences=parse_items(raw_result.get("cultural_experiences", []), "cultural"),
+            practical_tips=raw_result.get("practical_tips", [
+                "Book tickets online to avoid queue times.",
+                "Public transit passes provide cost-effective city travel."
+            ]),
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            provider_used=provider.name
+        )
+
+    @staticmethod
+    async def refine_recommendations(
+        request: RecommendationRefineRequest,
+        provider_override: Optional[str] = None
+    ) -> Dict[str, Any]:
+        provider = get_llm_provider(provider_override)
+        system_prompt = PromptBuilder.get_system_prompt()
+        user_prompt = PromptBuilder.build_recommendations_refine_prompt(request.model_dump())
+
+        raw_result = await provider.generate_structured(
+            prompt=user_prompt,
+            system_prompt=system_prompt
+        )
+        return {
+            "destination": request.destination,
+            "feedback_applied": request.feedback,
+            "result": raw_result,
+            "refined_at": datetime.now(timezone.utc).isoformat(),
+            "provider_used": provider.name
+        }
 
 recommendation_engine = RecommendationEngine()

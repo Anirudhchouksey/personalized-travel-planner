@@ -8,10 +8,13 @@ from app.schemas.itinerary import ActivityCreate, ActivityUpdate
 # In-memory storage structures for test & offline development
 _mem_trips: Dict[str, Dict[str, Any]] = {}
 _mem_itineraries: Dict[str, Dict[str, Any]] = {}
+_mem_itinerary_versions: Dict[str, List[Dict[str, Any]]] = {}
 _mem_days: Dict[str, Dict[str, Any]] = {}
 _mem_activities: Dict[str, Dict[str, Any]] = {}
 _mem_shares: Dict[str, Dict[str, Any]] = {}
 _mem_profiles: Dict[str, Dict[str, Any]] = {}
+_mem_refinements: List[Dict[str, Any]] = []
+_mem_collaborators: Dict[str, List[Dict[str, Any]]] = {}
 
 class Repository:
     """Unified repository abstraction connecting to Supabase or fallback in-memory store."""
@@ -22,22 +25,33 @@ class Repository:
     # --------------------------------------------------------------------------
     # TRIPS
     # --------------------------------------------------------------------------
-    async def create_trip(self, user_id: str, data: TripCreate) -> Dict[str, Any]:
+    async def create_trip(
+        self,
+        user_id: str,
+        data: Optional[Any] = None,
+        trip_data: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        payload = data if data is not None else trip_data
+        if isinstance(payload, dict):
+            trip_obj = TripCreate.model_validate(payload)
+        else:
+            trip_obj = payload
+
         trip_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         trip_dict = {
             "id": trip_id,
             "user_id": user_id,
-            "title": data.title,
-            "origin": data.origin,
-            "destination": data.destination,
-            "start_date": data.start_date.isoformat(),
-            "end_date": data.end_date.isoformat(),
-            "traveler_count": data.traveler_count,
-            "budget_amount": data.budget_amount,
-            "currency": data.currency,
-            "travel_preferences": data.travel_preferences.model_dump(),
-            "status": data.status,
+            "title": trip_obj.title,
+            "origin": trip_obj.origin,
+            "destination": trip_obj.destination,
+            "start_date": trip_obj.start_date.isoformat(),
+            "end_date": trip_obj.end_date.isoformat(),
+            "traveler_count": trip_obj.traveler_count,
+            "budget_amount": trip_obj.budget_amount,
+            "currency": trip_obj.currency,
+            "travel_preferences": trip_obj.travel_preferences.model_dump(),
+            "status": trip_obj.status,
             "created_at": now,
             "updated_at": now,
         }
@@ -283,6 +297,141 @@ class Repository:
                 print(f"[Supabase Get Trip Itineraries Error]: {e}")
         return []
 
+    async def save_itinerary_version(
+        self,
+        trip_id: str,
+        itinerary_data: Dict[str, Any],
+        user_instruction: Optional[str] = None,
+        summary: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Saves a snapshot of an itinerary version for historical comparison and rollback."""
+        if trip_id not in _mem_itinerary_versions:
+            _mem_itinerary_versions[trip_id] = []
+
+        version_num = itinerary_data.get("version", len(_mem_itinerary_versions[trip_id]) + 1)
+        snapshot = {
+            "version": version_num,
+            "trip_id": trip_id,
+            "itinerary_snapshot": dict(itinerary_data),
+            "user_instruction": user_instruction,
+            "summary": summary or f"Itinerary Version {version_num}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "total_days": len(itinerary_data.get("days", [])),
+            "estimated_total_cost": float(itinerary_data.get("estimated_total_cost", 0.0))
+        }
+
+        _mem_itinerary_versions[trip_id].append(snapshot)
+        return snapshot
+
+    async def get_itinerary_versions(self, trip_id: str) -> List[Dict[str, Any]]:
+        """Returns all saved versions for a trip, ordered by version descending."""
+        versions = _mem_itinerary_versions.get(trip_id, [])
+        return sorted(versions, key=lambda v: v.get("version", 0), reverse=True)
+
+    async def get_itinerary_version(self, trip_id: str, version: int) -> Optional[Dict[str, Any]]:
+        """Retrieves a specific version snapshot."""
+        versions = _mem_itinerary_versions.get(trip_id, [])
+        for v in versions:
+            if v.get("version") == version:
+                return v
+        return None
+
+    async def restore_itinerary_version(self, trip_id: str, version: int) -> Optional[Dict[str, Any]]:
+        """Restores a previous version as the active itinerary."""
+        target_version = await self.get_itinerary_version(trip_id, version)
+        if not target_version:
+            return None
+
+        restored_data = dict(target_version.get("itinerary_snapshot", {}))
+        # Keep version number updated or mark as restored
+        current_itins = await self.get_itineraries_by_trip(trip_id)
+        if current_itins and len(current_itins) > 0:
+            active_id = current_itins[0]["id"]
+            restored_data["version"] = current_itins[0].get("version", version) + 1
+            updated = await self.update_itinerary(active_id, restored_data)
+            # Record restore event
+            await self.save_itinerary_version(
+                trip_id=trip_id,
+                itinerary_data=updated or restored_data,
+                user_instruction=f"Restored to Version {version}",
+                summary=f"Rolled back to Version {version}"
+            )
+            return updated or restored_data
+
+        return restored_data
+
+    async def get_current_itinerary(self, trip_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves the active current itinerary version for a trip."""
+        if self.client:
+            try:
+                res = self.client.table("itineraries").select("*, itinerary_days(*, activities(*))").eq("trip_id", trip_id).eq("is_current", True).execute()
+                if res.data and len(res.data) > 0:
+                    return res.data[0]
+            except Exception as e:
+                print(f"[Supabase Get Current Itinerary Error]: {e}")
+
+        # Fallback to in-memory lookup
+        current = [itin for itin in _mem_itineraries.values() if itin.get("trip_id") == trip_id and itin.get("is_current", True)]
+        if current:
+            return current[-1]
+        all_itins = await self.get_itineraries_by_trip(trip_id)
+        return all_itins[0] if all_itins else None
+
+    async def set_current_itinerary(self, trip_id: str, itinerary_id: str) -> bool:
+        """Sets an itinerary as the active current version for a trip."""
+        if self.client:
+            try:
+                self.client.table("itineraries").update({"is_current": False}).eq("trip_id", trip_id).execute()
+                self.client.table("itineraries").update({"is_current": True}).eq("id", itinerary_id).eq("trip_id", trip_id).execute()
+            except Exception as e:
+                print(f"[Supabase Set Current Itinerary Error]: {e}")
+
+        for itin in _mem_itineraries.values():
+            if itin.get("trip_id") == trip_id:
+                itin["is_current"] = (itin.get("id") == itinerary_id)
+        return True
+
+    async def save_refinement_history(
+        self,
+        trip_id: str,
+        itinerary_id: Optional[str],
+        user_id: str,
+        instruction: str,
+        summary: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Records a conversational refinement event in database."""
+        row_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        record = {
+            "id": row_id,
+            "trip_id": trip_id,
+            "itinerary_id": itinerary_id,
+            "user_id": user_id,
+            "instruction": instruction,
+            "summary": summary,
+            "created_at": now
+        }
+        if self.client:
+            try:
+                self.client.table("itinerary_refinements").insert(record).execute()
+            except Exception as e:
+                print(f"[Supabase Refinement History Insert Error]: {e}")
+
+        _mem_refinements.append(record)
+        return record
+
+    async def get_refinement_history(self, trip_id: str) -> List[Dict[str, Any]]:
+        """Returns refinement history for a trip."""
+        if self.client:
+            try:
+                res = self.client.table("itinerary_refinements").select("*").eq("trip_id", trip_id).order("created_at", desc=True).execute()
+                if res.data:
+                    return res.data
+            except Exception as e:
+                print(f"[Supabase Refinement History Fetch Error]: {e}")
+
+        return [r for r in _mem_refinements if r.get("trip_id") == trip_id]
+
     async def update_activity(self, activity_id: str, data: ActivityUpdate) -> Optional[Dict[str, Any]]:
         act = _mem_activities.get(activity_id)
         if not act:
@@ -473,5 +622,173 @@ class Repository:
                 print(f"[Supabase Revoke Share Error]: {e}")
 
         return found
+
+    # --------------------------------------------------------------------------
+    # ITINERARIES UPDATE & HISTORY
+    # --------------------------------------------------------------------------
+    async def update_itinerary(self, itinerary_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        itin = await self.get_itinerary_by_id(itinerary_id)
+        if not itin:
+            return None
+        now = datetime.now(timezone.utc).isoformat()
+        if "structured_itinerary" in updates:
+            itin["structured_itinerary"] = updates["structured_itinerary"]
+        itin["updated_at"] = now
+
+        if itinerary_id in _mem_itineraries:
+            _mem_itineraries[itinerary_id].update(itin)
+
+        if self.client:
+            try:
+                self.client.table("itineraries").update({
+                    "structured_itinerary": itin.get("structured_itinerary", {}),
+                    "updated_at": now
+                }).eq("id", itinerary_id).execute()
+            except Exception as e:
+                print(f"[Supabase Update Itinerary Error]: {e}")
+
+        return itin
+
+    async def get_user_history(self, user_id: str) -> List[Dict[str, Any]]:
+        history_items = []
+        user_trips = await self.get_trips(user_id)
+        for t in user_trips:
+            history_items.append({
+                "id": t["id"],
+                "user_id": user_id,
+                "record_type": "trip",
+                "title": t.get("title", "Saved Trip"),
+                "destination": t.get("destination", ""),
+                "created_at": t.get("created_at", datetime.now(timezone.utc).isoformat()),
+                "summary": f"Trip planned for {t.get('destination')} ({t.get('start_date')} to {t.get('end_date')})",
+                "details": t
+            })
+            itins = await self.get_itineraries_by_trip(t["id"])
+            for it in itins:
+                history_items.append({
+                    "id": it["id"],
+                    "user_id": user_id,
+                    "record_type": "itinerary",
+                    "title": f"Itinerary for {t.get('title', 'Trip')}",
+                    "destination": t.get("destination", ""),
+                    "created_at": it.get("created_at", datetime.now(timezone.utc).isoformat()),
+                    "summary": f"Structured {len(it.get('days', []))}-day schedule (v{it.get('version', 1)})",
+                    "details": it.get("structured_itinerary", {})
+                })
+
+        history_items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return history_items
+
+    async def get_history_by_id(self, history_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        history_items = await self.get_user_history(user_id)
+        for item in history_items:
+            if item["id"] == history_id:
+                return item
+        return None
+
+    # --------------------------------------------------------------------------
+    # COLLABORATORS
+    # --------------------------------------------------------------------------
+    async def add_collaborator(
+        self,
+        trip_id: str,
+        email: str,
+        role: str = "viewer",
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        cid = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        collab_dict = {
+            "id": cid,
+            "trip_id": trip_id,
+            "email": email.strip().lower(),
+            "role": role,
+            "user_id": user_id,
+            "created_at": now
+        }
+        if self.client:
+            try:
+                res = self.client.table("trip_collaborators").insert(collab_dict).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"[Supabase Collaborators Insert Error]: {e}")
+
+        if trip_id not in _mem_collaborators:
+            _mem_collaborators[trip_id] = []
+        for idx, c in enumerate(_mem_collaborators[trip_id]):
+            if c.get("email") == email.strip().lower():
+                _mem_collaborators[trip_id][idx]["role"] = role
+                return _mem_collaborators[trip_id][idx]
+
+        _mem_collaborators[trip_id].append(collab_dict)
+        return collab_dict
+
+    async def get_collaborators(self, trip_id: str) -> List[Dict[str, Any]]:
+        if self.client:
+            try:
+                res = self.client.table("trip_collaborators").select("*").eq("trip_id", trip_id).order("created_at", desc=False).execute()
+                if res.data is not None:
+                    return res.data
+            except Exception as e:
+                print(f"[Supabase Collaborators Fetch Error]: {e}")
+
+        return _mem_collaborators.get(trip_id, [])
+
+    async def update_collaborator_role(
+        self,
+        collaborator_id: str,
+        trip_id: str,
+        role: str
+    ) -> Optional[Dict[str, Any]]:
+        if self.client:
+            try:
+                res = self.client.table("trip_collaborators").update({"role": role}).eq("id", collaborator_id).eq("trip_id", trip_id).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"[Supabase Collaborator Update Error]: {e}")
+
+        collabs = _mem_collaborators.get(trip_id, [])
+        for c in collabs:
+            if c.get("id") == collaborator_id:
+                c["role"] = role
+                return c
+        return None
+
+    async def remove_collaborator(
+        self,
+        collaborator_id: str,
+        trip_id: str
+    ) -> bool:
+        if self.client:
+            try:
+                self.client.table("trip_collaborators").delete().eq("id", collaborator_id).eq("trip_id", trip_id).execute()
+            except Exception as e:
+                print(f"[Supabase Collaborator Delete Error]: {e}")
+
+        collabs = _mem_collaborators.get(trip_id, [])
+        before_len = len(collabs)
+        _mem_collaborators[trip_id] = [c for c in collabs if c.get("id") != collaborator_id]
+        return len(_mem_collaborators[trip_id]) < before_len
+
+    async def check_user_trip_access(
+        self,
+        trip_id: str,
+        user_id: str,
+        user_email: Optional[str] = None
+    ) -> Optional[str]:
+        """Returns 'owner', 'editor', 'viewer', or None."""
+        trip = await self.get_trip_by_id(trip_id)
+        if not trip:
+            return None
+        if trip.get("user_id") == user_id:
+            return "owner"
+
+        collabs = await self.get_collaborators(trip_id)
+        for c in collabs:
+            if c.get("user_id") == user_id or (user_email and c.get("email") == user_email.lower()):
+                return c.get("role", "viewer")
+        return None
 
 repository = Repository()

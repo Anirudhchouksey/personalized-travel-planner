@@ -1,120 +1,134 @@
-# Database Design & Migrations: Personalized Travel Itinerary Planner
+# Database Architecture & Supabase PostgreSQL Guide
 
 ## Overview
-The application utilizes Supabase PostgreSQL with strict Row Level Security (RLS) enforcement.
+
+WanderAI utilizes **Supabase PostgreSQL** with full **Row Level Security (RLS)** to protect user data while providing high-performance relational queries. When Supabase is not yet configured, the backend seamlessly falls back to a built-in in-memory resilient store for instant evaluation.
 
 ---
 
-## 1. Entity-Relationship Diagram
+## 1. Relational Schema Architecture
 
-```mermaid
-erDiagram
-    PROFILES ||--o{ TRIPS : "owns"
-    PROFILES ||--o{ SAVED_PLACES : "saves"
-    TRIPS ||--o{ ITINERARIES : "contains"
-    TRIPS ||--o{ SHARES : "shared_via"
-    ITINERARIES ||--o{ ITINERARY_DAYS : "schedules"
-    ITINERARY_DAYS ||--o{ ACTIVITIES : "includes"
-
-    PROFILES {
-        uuid id PK
-        text display_name
-        text preferred_currency
-        jsonb default_preferences
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    TRIPS {
-        uuid id PK
-        uuid user_id FK
-        text title
-        text origin
-        text destination
-        date start_date
-        date end_date
-        int traveler_count
-        numeric budget_amount
-        text currency
-        jsonb travel_preferences
-        text status
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    ITINERARIES {
-        uuid id PK
-        uuid trip_id FK
-        int version
-        jsonb structured_itinerary
-        text generation_provider
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    ITINERARY_DAYS {
-        uuid id PK
-        uuid itinerary_id FK
-        int day_number
-        date date
-        text summary
-        text notes
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    ACTIVITIES {
-        uuid id PK
-        uuid itinerary_day_id FK
-        text name
-        text description
-        text category
-        text start_time
-        text end_time
-        text location_name
-        float latitude
-        float longitude
-        numeric estimated_cost
-        text currency
-        int estimated_duration_minutes
-        text verification_status
-        int display_order
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    SHARES {
-        uuid id PK
-        uuid trip_id FK
-        uuid owner_id FK
-        text token_hash UK
-        timestamptz expires_at
-        timestamptz revoked_at
-        timestamptz created_at
-    }
+```
+auth.users (Supabase Auth)
+  │
+  ├── 1:1 ── profiles (display_name, preferred_currency, default_preferences)
+  │
+  ├── 1:N ── trips (title, origin, destination, start_date, end_date, budget, status)
+  │            │
+  │            ├── 1:N ── itineraries (version, structured_itinerary, provider)
+  │            │            │
+  │            │            └── 1:N ── itinerary_days (day_number, date, summary, notes)
+  │            │                         │
+  │            │                         └── 1:N ── activities (name, times, location, coordinates, cost, status, order)
+  │            │
+  │            └── 1:N ── shares (token_hash, expires_at, revoked_at)
+  │
+  └── 1:N ── saved_places (user favorites)
 ```
 
 ---
 
-## 2. Row Level Security Policies Summary
+## 2. Table Specifications & Constraints
 
-| Table | Policy Name | Command | Rule |
-| :--- | :--- | :--- | :--- |
-| `profiles` | Users can view own profile | SELECT | `auth.uid() = id` |
-| `profiles` | Users can update own profile | UPDATE | `auth.uid() = id` |
-| `trips` | Users can manage own trips | ALL | `auth.uid() = user_id` |
-| `trips` | Public read shared trip | SELECT | `EXISTS (SELECT 1 FROM shares WHERE shares.trip_id = trips.id AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()))` |
-| `itineraries` | Users can manage own itineraries | ALL | `EXISTS (SELECT 1 FROM trips WHERE trips.id = itineraries.trip_id AND trips.user_id = auth.uid())` |
-| `itinerary_days` | Users can manage own days | ALL | Owner of parent trip |
-| `activities` | Users can manage own activities | ALL | Owner of parent trip |
-| `shares` | Owners manage shares | ALL | `auth.uid() = owner_id` |
-| `shares` | Public lookup by token hash | SELECT | `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())` |
+### `profiles`
+- `id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`
+- `display_name TEXT`
+- `preferred_currency TEXT DEFAULT 'USD'`
+- `default_preferences JSONB`
+- `created_at / updated_at TIMESTAMPTZ`
+
+### `trips`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`
+- `title TEXT NOT NULL`
+- `origin TEXT`
+- `destination TEXT NOT NULL`
+- `start_date DATE NOT NULL`
+- `end_date DATE NOT NULL`
+- `traveler_count INTEGER NOT NULL DEFAULT 1 CHECK (traveler_count >= 1)`
+- `budget_amount NUMERIC(12, 2) CHECK (budget_amount >= 0)`
+- `currency TEXT DEFAULT 'USD'`
+- `travel_preferences JSONB NOT NULL DEFAULT '{}'`
+- `status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('draft', 'planned', 'ongoing', 'completed', 'archived'))`
+- `CONSTRAINT valid_dates CHECK (end_date >= start_date)`
+
+### `itineraries`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE`
+- `version INTEGER NOT NULL DEFAULT 1`
+- `is_current BOOLEAN DEFAULT TRUE`
+- `refinement_instruction TEXT`
+- `structured_itinerary JSONB NOT NULL DEFAULT '{}'`
+- `generation_provider TEXT DEFAULT 'mock'`
+- `CONSTRAINT idx_itineraries_single_current UNIQUE (trip_id) WHERE is_current = TRUE`
+
+### `itinerary_refinements`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE`
+- `itinerary_id UUID REFERENCES public.itineraries(id) ON DELETE SET NULL`
+- `user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`
+- `instruction TEXT NOT NULL`
+- `summary TEXT`
+- `created_at TIMESTAMPTZ DEFAULT NOW()`
+
+### `itinerary_days`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `itinerary_id UUID NOT NULL REFERENCES public.itineraries(id) ON DELETE CASCADE`
+- `day_number INTEGER NOT NULL CHECK (day_number >= 1)`
+- `date DATE NOT NULL`
+- `summary TEXT`
+- `notes TEXT`
+- `CONSTRAINT unique_itinerary_day UNIQUE(itinerary_id, day_number)`
+
+### `activities`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `itinerary_day_id UUID NOT NULL REFERENCES public.itinerary_days(id) ON DELETE CASCADE`
+- `name TEXT NOT NULL`
+- `description TEXT`
+- `category TEXT DEFAULT 'sightseeing'`
+- `start_time TEXT`
+- `end_time TEXT`
+- `location_name TEXT`
+- `latitude DOUBLE PRECISION`
+- `longitude DOUBLE PRECISION`
+- `estimated_cost NUMERIC(10, 2) DEFAULT 0.00`
+- `currency TEXT DEFAULT 'USD'`
+- `estimated_duration_minutes INTEGER DEFAULT 60`
+- `verification_status TEXT DEFAULT 'estimated' CHECK (verification_status IN ('estimated', 'verified', 'approximate', 'unknown'))`
+- `display_order INTEGER DEFAULT 0`
+
+### `shares`
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE`
+- `owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`
+- `token_hash TEXT NOT NULL UNIQUE`
+- `expires_at TIMESTAMPTZ`
+- `revoked_at TIMESTAMPTZ`
 
 ---
 
-## 3. Applying Migrations to Supabase
+## 3. Row Level Security (RLS) Policies
 
-1. Open your project at [Supabase Dashboard](https://supabase.com/dashboard).
-2. Navigate to **SQL Editor**.
-3. Copy the contents of `supabase/schema.sql` and click **Run**.
-4. Confirm in **Table Editor** that `profiles`, `trips`, `itineraries`, `itinerary_days`, `activities`, `saved_places`, and `shares` are created with RLS enabled.
+All tables have RLS enabled:
+1. **User Isolation**:
+   - `trips`: `auth.uid() = user_id` for SELECT, INSERT, UPDATE, DELETE.
+   - `itineraries`: Cascades through `trips.user_id = auth.uid()`.
+   - `itinerary_days`: Cascades through `trips.user_id = auth.uid()`.
+   - `activities`: Cascades through `trips.user_id = auth.uid()`.
+2. **Public Share Links**:
+   - Anyone holding an active, unrevoked `token_hash` can read the shared trip and its associated itinerary (`public.shares.revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())`).
+
+---
+
+## 4. Setup Instructions
+
+1. Create a free Supabase project at [https://supabase.com](https://supabase.com).
+2. Open the **SQL Editor** tab in the Supabase Dashboard.
+3. Paste and run `supabase/migrations/001_initial_schema.sql` to initialize tables, indexes, triggers, and Row Level Security.
+4. Next, execute `supabase/migrations/002_itinerary_refinements_and_versioning.sql` to add version history support and the `itinerary_refinements` table.
+5. Copy your `Project URL`, `anon key`, and `service_role key` into your backend `.env`:
+```bash
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+```

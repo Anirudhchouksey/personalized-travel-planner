@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
-from app.api.routes import health, trips, itineraries, recommendations, shares
+from app.api.routes import health, trips, itineraries, recommendations, shares, auth, history, routes
 from app.services.ai.base import LLMProviderError
 
 app = FastAPI(
@@ -50,10 +50,14 @@ async def handle_llm_provider_error(request: Request, exc: LLMProviderError):
 
 # Include Routers
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(trips.router)
+app.include_router(trips.legacy_router)
 app.include_router(itineraries.router)
 app.include_router(recommendations.router)
 app.include_router(shares.router)
+app.include_router(history.router)
+app.include_router(routes.router)
 
 @app.get("/")
 async def root():

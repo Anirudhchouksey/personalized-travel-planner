@@ -11,9 +11,14 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
     Returns an instance of the configured or requested LLM provider.
     Supports environment-based provider selection: groq | huggingface | ollama | mock.
     """
-    target = (provider_name or settings.AI_PROVIDER or "mock").lower().strip()
+    target = (provider_name or settings.LLM_PROVIDER or settings.AI_PROVIDER or "mock").lower().strip()
 
-    if target == "groq":
+    if target == "gemini":
+        from app.ai.providers.gemini_provider import GeminiProvider
+        if settings.GEMINI_API_KEY:
+            return GeminiProvider(api_key=settings.GEMINI_API_KEY, model=settings.GEMINI_MODEL)
+        return MockProvider()
+    elif target == "groq":
         return GroqProvider()
     elif target in ("huggingface", "hf"):
         return HuggingFaceProvider()
@@ -26,7 +31,9 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
 
 async def get_all_providers_health() -> Dict[str, Any]:
     """Returns diagnostic health status of all available providers."""
+    from app.ai.providers.gemini_provider import GeminiProvider
     providers = {
+        "gemini": GeminiProvider(api_key=settings.GEMINI_API_KEY, model=settings.GEMINI_MODEL),
         "groq": GroqProvider(),
         "huggingface": HuggingFaceProvider(),
         "ollama": OllamaProvider(),

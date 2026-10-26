@@ -10,6 +10,10 @@ class TravelPreferences(BaseModel):
         default="moderate",
         description="Pace: relaxed, moderate, fast"
     )
+    travel_style: Optional[str] = Field(
+        default="standard",
+        description="Style: budget, standard, luxury, backpacker, family"
+    )
     interests: List[str] = Field(
         default_factory=lambda: ["sightseeing", "food & dining", "culture & history"],
         description="User interests such as culinary, museums, nature, nightlife, photography"

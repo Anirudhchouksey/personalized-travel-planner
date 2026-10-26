@@ -21,12 +21,19 @@ import {
   ChevronDown,
   ChevronUp,
   Tag,
-  Info
+  Info,
+  History,
+  Lock,
+  Unlock,
+  MessageSquare
 } from 'lucide-react';
 import { api } from '../api/client';
 import { Trip, Itinerary, ItineraryDay, Activity, ActivityUpdate } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { RouteMapVisualizer } from '../components/RouteMapVisualizer';
+import { ItineraryChatPanel } from '../components/ItineraryChatPanel';
+import { VersionHistoryModal } from '../components/VersionHistoryModal';
 
 export const ItineraryPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -56,6 +63,20 @@ export const ItineraryPage: React.FC = () => {
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
 
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
+  const [routeComparison, setRouteComparison] = useState<any>(null);
+  const [routeWarnings, setRouteWarnings] = useState<string[]>([]);
+
+  // Conversational Refinement & Snapshot Versioning State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+  const [lockedActivityIds, setLockedActivityIds] = useState<string[]>([]);
+
+  const toggleLockActivity = (actId: string) => {
+    setLockedActivityIds((prev) =>
+      prev.includes(actId) ? prev.filter((x) => x !== actId) : [...prev, actId]
+    );
+  };
 
   useEffect(() => {
     if (id) {
@@ -169,17 +190,21 @@ export const ItineraryPage: React.FC = () => {
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportFormat = async (format: 'pdf' | 'markdown' | 'ics' | 'json') => {
     if (!itinerary || !trip) return;
     try {
       setIsExportingPdf(true);
-      await api.exportItineraryPdf(itinerary.id, `${trip.destination.replace(/[\s,]+/g, '_')}_Itinerary.pdf`);
+      const safeDest = trip.destination.replace(/[\s,]+/g, '_');
+      const filename = `${safeDest}_Itinerary.${format === 'pdf' ? 'html' : format === 'markdown' ? 'md' : format}`;
+      await api.exportItinerary(itinerary.id, format, filename);
     } catch (err: any) {
       alert(`Export failed: ${err.message}`);
     } finally {
       setIsExportingPdf(false);
     }
   };
+
+  const handleExportPdf = () => handleExportFormat('pdf');
 
   const handleOpenShare = async () => {
     if (!trip) return;
@@ -203,6 +228,42 @@ export const ItineraryPage: React.FC = () => {
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
+  };
+
+  const handleOptimizeDayRoute = async (pace: string) => {
+    if (!id || !itinerary) return;
+    try {
+      setIsOptimizingRoute(true);
+      const res = await api.optimizeTripItinerary(id, pace);
+      setItinerary(res);
+      const daysList = itinerary.days || [];
+      const cDay = daysList.find((d) => d.day_number === selectedDayNumber) || daysList[0];
+      if (cDay) {
+        const originalStops = cDay.activities.map((a) => ({
+          id: a.id,
+          name: a.name,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          duration_minutes: a.estimated_duration_minutes || 90,
+        }));
+        const updatedDay = res.days.find((d) => d.day_number === cDay.day_number);
+        if (updatedDay) {
+          const optimizedStops = updatedDay.activities.map((a) => ({
+            id: a.id,
+            name: a.name,
+            latitude: a.latitude,
+            longitude: a.longitude,
+            duration_minutes: a.estimated_duration_minutes || 90,
+          }));
+          const comp = await api.compareRoutes(originalStops, optimizedStops, pace);
+          setRouteComparison(comp);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to optimize route');
+    } finally {
+      setIsOptimizingRoute(false);
+    }
   };
 
   if (loading) {
@@ -252,7 +313,7 @@ export const ItineraryPage: React.FC = () => {
                 Pace: {trip.travel_preferences?.travel_pace || 'Moderate'}
               </Badge>
               <span className="text-xs text-slate-400 font-medium">
-                v{itinerary?.version || 1} &bull; Provider: {itinerary?.generation_provider || 'Groq'}
+                v{itinerary?.version || 1} &bull; Provider: {itinerary?.generation_provider || 'Gemini'}
               </span>
             </div>
 
@@ -283,22 +344,66 @@ export const ItineraryPage: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsChatOpen(true)}
+              title="Open conversational AI refinement panel"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-forest-800 text-white hover:bg-forest-900 font-bold text-xs shadow-xs transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-forest-200" />
+              Refine with AI
+              {lockedActivityIds.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-forest-950 text-[10px] font-semibold text-amber-300">
+                  {lockedActivityIds.length} locked
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsVersionModalOpen(true)}
+              title="Review snapshots and roll back to previous versions"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
+            >
+              <History className="w-3.5 h-3.5 text-slate-600" />
+              Versions (v{itinerary?.version || 1})
+            </button>
+
             <button
               onClick={handleExportPdf}
               disabled={isExportingPdf}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
+              title="Export printable HTML/PDF dossier"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
             >
-              <Download className="w-4 h-4 text-slate-600" />
-              {isExportingPdf ? 'Exporting...' : 'Export PDF'}
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              {isExportingPdf ? 'Exporting...' : 'Export Dossier'}
+            </button>
+
+            <button
+              onClick={() => handleExportFormat('ics')}
+              disabled={isExportingPdf}
+              title="Export iCalendar (.ics) format to sync with Google / Apple Calendar"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
+            >
+              <Calendar className="w-3.5 h-3.5 text-slate-600" />
+              Calendar (.ics)
+            </button>
+
+            <button
+              onClick={() => handleExportFormat('markdown')}
+              disabled={isExportingPdf}
+              title="Export Markdown notes"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
+            >
+              <Tag className="w-3.5 h-3.5 text-slate-600" />
+              Markdown
             </button>
 
             <button
               onClick={handleOpenShare}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-sand-300 text-slate-700 hover:bg-sand-50 font-medium text-xs shadow-2xs transition-all"
             >
-              <Share2 className="w-4 h-4 text-slate-600" />
-              Share Itinerary
+              <Share2 className="w-3.5 h-3.5 text-slate-600" />
+              Share
             </button>
           </div>
         </div>
@@ -362,6 +467,26 @@ export const ItineraryPage: React.FC = () => {
               Regenerate This Day
             </button>
           </div>
+
+          {/* Smart Route Optimizer & Map Visualizer */}
+          <RouteMapVisualizer
+            dayNumber={currentDay.day_number}
+            date={currentDay.date}
+            stops={currentDay.activities.map((a) => ({
+              id: a.id,
+              name: a.name,
+              category: a.category,
+              latitude: a.latitude,
+              longitude: a.longitude,
+              start_time: a.start_time,
+              end_time: a.end_time,
+              duration_minutes: a.estimated_duration_minutes,
+            }))}
+            onOptimize={handleOptimizeDayRoute}
+            isOptimizing={isOptimizingRoute}
+            comparison={routeComparison}
+            warnings={routeWarnings}
+          />
 
           {/* Activities Timeline */}
           <div className="space-y-4">
@@ -434,6 +559,26 @@ export const ItineraryPage: React.FC = () => {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-1 pt-2 sm:pt-0 self-end sm:self-start opacity-80 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => toggleLockActivity(act.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          lockedActivityIds.includes(act.id)
+                            ? 'text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 shadow-2xs'
+                            : 'text-slate-400 hover:text-slate-700 hover:bg-sand-100'
+                        }`}
+                        title={
+                          lockedActivityIds.includes(act.id)
+                            ? "Activity locked: will not be replaced during AI refinement"
+                            : "Lock this activity so AI refinement preserves it"
+                        }
+                      >
+                        {lockedActivityIds.includes(act.id) ? (
+                          <Lock className="w-4 h-4 text-amber-600" />
+                        ) : (
+                          <Unlock className="w-4 h-4" />
+                        )}
+                      </button>
                       <button
                         onClick={() => handleEditActivity(act)}
                         className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-sand-100 transition-colors"
@@ -727,6 +872,36 @@ export const ItineraryPage: React.FC = () => {
           )}
         </div>
       </Modal>
+
+      {/* Conversational AI Refinement Drawer */}
+      {trip && itinerary && (
+        <ItineraryChatPanel
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          tripId={trip.id}
+          destination={trip.destination}
+          currentItinerary={itinerary}
+          lockedActivityIds={lockedActivityIds}
+          onUnlockActivity={(actId) => setLockedActivityIds((prev) => prev.filter((x) => x !== actId))}
+          onClearLocked={() => setLockedActivityIds([])}
+          onItineraryUpdated={(updatedItin) => {
+            setItinerary(updatedItin);
+          }}
+        />
+      )}
+
+      {/* Snapshot Version History & Rollback Modal */}
+      {trip && itinerary && (
+        <VersionHistoryModal
+          isOpen={isVersionModalOpen}
+          onClose={() => setIsVersionModalOpen(false)}
+          tripId={trip.id}
+          currentVersion={itinerary.version || 1}
+          onRestore={(restoredItin) => {
+            setItinerary(restoredItin);
+          }}
+        />
+      )}
     </div>
   );
 };

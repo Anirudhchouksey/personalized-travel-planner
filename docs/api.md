@@ -1,157 +1,197 @@
-# API Specification: Personalized Travel Itinerary Planner
+# API Documentation: WanderAI Travel Planner
 
-## Overview
-All endpoints conform to standard REST conventions, returning JSON responses and appropriate HTTP status codes.
+All endpoints follow RESTful conventions, accept/return JSON, and strictly validate inputs via Zod.
 
-Base URL (Local Development): `http://localhost:8000`
+Base URL (Local): `http://localhost:8000`
 
 ---
 
-## 1. System & Health Endpoints
+## 1. System Health
 
 ### `GET /health`
-Liveness and readiness probe for Render and load balancers.
-- **Response `200 OK`**:
+Liveness and readiness check.
+- **Status Code**: `200 OK`
+- **Response**:
 ```json
 {
   "status": "healthy",
-  "app": "Personalized Travel Itinerary Planner",
-  "env": "development",
-  "active_ai_provider": "mock",
-  "supabase_configured": false
+  "app": "WanderAI - Personalized Travel Itinerary Planner",
+  "timestamp": "2026-10-24T00:30:00.000Z",
+  "backend_mode": "in-memory-demo",
+  "active_ai_provider": "Mock AI (Built-in Demo Mode)",
+  "active_routing_provider": "openstreetmap-osrm"
 }
 ```
 
 ### `GET /api/v1/health/ai`
-Diagnostic check inspecting all registered LLM providers (Groq, Hugging Face, Ollama, Mock).
-- **Response `200 OK`**:
+Diagnostic check inspecting AI and routing capabilities.
+- **Status Code**: `200 OK`
+
+---
+
+## 2. Destination Recommendations
+
+### `POST /api/v1/recommendations/destinations`
+Calculates high-alignment destinations based on traveler vibe, duration, budget, and interests.
+- **Request Body**:
 ```json
 {
-  "active_provider": "mock",
-  "providers": {
-    "groq": { "provider": "groq", "status": "missing_api_key", "configured": false },
-    "huggingface": { "provider": "huggingface", "status": "missing_api_token", "configured": false },
-    "ollama": { "provider": "ollama", "status": "unreachable", "configured": true },
-    "mock": { "provider": "mock", "status": "ready", "configured": true }
-  }
+  "origin": "San Francisco",
+  "travel_vibe": "cultural",
+  "travel_style": "standard",
+  "budget_amount": 2500,
+  "currency": "USD",
+  "duration_days": 6,
+  "traveler_count": 2,
+  "interests": ["Art & History Museums", "Local Gastronomy"]
+}
+```
+- **Status Code**: `200 OK`
+- **Response**:
+```json
+{
+  "recommendations": [
+    {
+      "destination": "Kyoto",
+      "country": "Japan",
+      "match_score": 98,
+      "tagline": "Centuries of tranquil temples, bamboo groves, and traditional tea ceremonies",
+      "highlights": ["Fushimi Inari Shrine", "Arashiyama Bamboo Grove"],
+      "estimated_cost_range": "USD 1,600 - 2,400",
+      "best_season": "Spring (Cherry Blossoms) or Autumn",
+      "reasoning": "Exceptional match for cultural immersion with over 1,600 historic Buddhist temples.",
+      "suggested_duration_days": 6,
+      "accessibility_rating": "Moderate",
+      "estimated_budget_breakdown": {
+        "daily_accommodation": 110,
+        "daily_food": 45,
+        "daily_activities": 30,
+        "daily_transport": 15,
+        "total_estimated": 1200,
+        "currency": "USD"
+      }
+    }
+  ],
+  "generated_at": "2026-10-24T00:30:00.000Z",
+  "provider_used": "Mock AI (Built-in Demo Mode)"
 }
 ```
 
 ---
 
-## 2. Trips Endpoints
+## 3. Trips CRUD
+
+### `GET /api/v1/trips`
+Lists all saved trips for the authenticated user.
+- **Headers**: `Authorization: Bearer <token>`
+- **Status Code**: `200 OK`
 
 ### `POST /api/v1/trips`
-Creates a trip record for the authenticated user.
+Creates a new trip and validates preferences.
 - **Headers**: `Authorization: Bearer <token>`
 - **Request Body**:
 ```json
 {
   "title": "Autumn in Kyoto",
-  "origin": "San Francisco",
+  "origin": "SFO",
   "destination": "Kyoto, Japan",
-  "start_date": "2026-11-01",
-  "end_date": "2026-11-05",
+  "start_date": "2026-11-10",
+  "end_date": "2026-11-15",
   "traveler_count": 2,
-  "budget_amount": 2500,
+  "budget_amount": 3200,
   "currency": "USD",
   "travel_preferences": {
     "travel_vibe": "cultural",
     "travel_pace": "moderate",
-    "interests": ["sightseeing", "food"],
-    "preferred_transportation": ["walking", "public_transit"],
-    "dietary_requirements": ["vegetarian"],
-    "accessibility_requirements": [],
-    "notes": "Low walking"
+    "travel_style": "standard",
+    "interests": ["Temples", "Gardens"],
+    "preferred_transportation": ["Transit"],
+    "dietary_requirements": [],
+    "accessibility_requirements": []
   }
 }
 ```
-- **Response `201 Created`**: Returns created `TripResponse` object.
+- **Status Code**: `201 Created`
 
-### `GET /api/v1/trips`
-Lists all trips owned by the current user.
+### `GET /api/v1/trips/:id`
+Retrieves a single trip record.
+- **Status Code**: `200 OK` (or `404 Not Found`)
 
-### `GET /api/v1/trips/{trip_id}`
-Retrieves a single trip record by ID.
+### `PATCH /api/v1/trips/:id`
+Updates trip properties or preferences.
+- **Status Code**: `200 OK`
 
-### `PATCH /api/v1/trips/{trip_id}`
-Updates editable fields of a trip (title, dates, budget, preferences).
-
-### `DELETE /api/v1/trips/{trip_id}`
-Deletes trip and cascades associated itineraries.
-
-### `POST /api/v1/trips/{trip_id}/generate`
-Triggers AI generation for the trip.
-- **Request Body (optional)**:
-```json
-{
-  "provider_override": "groq",
-  "custom_instructions": "Prioritize tea ceremonies"
-}
-```
-- **Response `200 OK`**: Returns complete `ItineraryResponse` with daily timeline.
+### `DELETE /api/v1/trips/:id`
+Deletes a trip and its itineraries.
+- **Status Code**: `204 No Content`
 
 ---
 
-## 3. Itineraries Endpoints
+## 4. Itineraries & Activities
 
-### `GET /api/v1/itineraries/{itinerary_id}`
-Retrieves an itinerary and its nested days and activities.
+### `POST /api/v1/trips/:tripId/generate`
+Generates a structured, day-wise itinerary, calculates distances, optimizes route orders, and computes budget breakdowns.
+- **Status Code**: `201 Created`
 
-### `PATCH /api/v1/itineraries/{itinerary_id}/activities/{activity_id}`
-Updates single activity metadata (time, category, location, cost, description).
+### `GET /api/v1/trips/:tripId/itineraries`
+Lists all generated itinerary versions for a trip.
+- **Status Code**: `200 OK`
 
-### `DELETE /api/v1/itineraries/{itinerary_id}/activities/{activity_id}`
-Removes an activity from a day schedule.
+### `GET /api/v1/itineraries/:id`
+Fetches a specific itinerary with nested days and activities.
+- **Status Code**: `200 OK`
 
-### `POST /api/v1/itineraries/{itinerary_id}/days/{day_id}/regenerate`
-Regenerates a single day's activities based on user prompt while preserving other days.
+### `PATCH /api/v1/itineraries/:id/activities/:activityId`
+Updates activity title, duration, notes, times, or costs.
+- **Status Code**: `200 OK`
+
+### `DELETE /api/v1/itineraries/:id/activities/:activityId`
+Removes an activity and recalculates the day's order.
+- **Status Code**: `204 No Content`
+
+### `POST /api/v1/itineraries/:id/days/:dayId/regenerate`
+Regenerates an individual day schedule with custom traveler feedback while optionally preserving selected activities.
 - **Request Body**:
 ```json
 {
-  "feedback": "Make this day more focused on outdoor parks and reduce walking",
+  "feedback": "Make this day more culinary-focused with artisan bakeries and quiet tea rooms",
   "preserve_activity_ids": []
 }
 ```
-
-### `POST /api/v1/itineraries/{itinerary_id}/export`
-Generates and downloads a publication-grade PDF itinerary dossier.
-- **Response**: `application/pdf` binary stream.
+- **Status Code**: `200 OK`
 
 ---
 
-## 4. Destination Recommendations Endpoints
+## 5. Exports
 
-### `POST /api/v1/recommendations/destinations`
-Recommends candidate destinations based on constraints.
-- **Request Body**:
-```json
-{
-  "travel_vibe": "cultural",
-  "budget_amount": 2500,
-  "currency": "USD",
-  "duration_days": 7,
-  "traveler_count": 2,
-  "interests": ["history", "gastronomy", "museums"]
-}
-```
+### `POST /api/v1/itineraries/:id/export?format={format}`
+Exports the itinerary in multiple supported formats.
+- **Query Parameter `format`**:
+  - `pdf` (default): Printable HTML dossier formatted for browser print-to-PDF
+  - `markdown`: Clean Markdown dossier
+  - `ics`: Standard iCalendar file importable into Google / Apple Calendar
+  - `json`: Raw structured JSON
+- **Status Code**: `200 OK` with appropriate `Content-Type` and `Content-Disposition`.
 
 ---
 
-## 5. Sharing Endpoints
+## 6. Shares
 
 ### `POST /api/v1/shares`
-Generates an unguessable public share link.
+Generates a secure public share link token.
 - **Request Body**:
 ```json
 {
-  "trip_id": "uuid-here",
+  "trip_id": "11111111-1111-1111-1111-111111111111",
   "expires_in_days": 30
 }
 ```
+- **Status Code**: `201 Created`
 
-### `GET /api/v1/shares/{share_token}`
-Public unauthenticated endpoint to view shared trip and schedule.
+### `GET /api/v1/shares/:token`
+Public endpoint allowing anyone with the token to view the trip and itinerary.
+- **Status Code**: `200 OK` (or `404 Not Found` if expired/revoked)
 
-### `DELETE /api/v1/shares/{share_id}`
-Revokes public share token.
+### `DELETE /api/v1/shares/:id`
+Revokes an active share link.
+- **Status Code**: `204 No Content`

@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.travel_preferences import TravelPreferences
 
@@ -15,6 +15,16 @@ class TripBase(BaseModel):
     travel_preferences: TravelPreferences = Field(default_factory=TravelPreferences)
     status: str = Field(default="planned", json_schema_extra={"example": "planned"})
 
+    @model_validator(mode="before")
+    @classmethod
+    def set_default_title(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("title") and data.get("destination"):
+                data["title"] = f"Trip to {data['destination']}"
+            elif not data.get("title"):
+                data["title"] = "Planned Travel Itinerary"
+        return data
+
     @model_validator(mode="after")
     def validate_dates(self):
         if self.end_date < self.start_date:
@@ -23,6 +33,8 @@ class TripBase(BaseModel):
 
 class TripCreate(TripBase):
     pass
+
+TripCreateRequest = TripCreate
 
 class TripUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=2, max_length=150)
@@ -35,6 +47,8 @@ class TripUpdate(BaseModel):
     currency: Optional[str] = None
     travel_preferences: Optional[TravelPreferences] = None
     status: Optional[str] = None
+
+TripUpdateRequest = TripUpdate
 
 class TripResponse(TripBase):
     id: str

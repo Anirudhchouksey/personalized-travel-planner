@@ -10,9 +10,14 @@ import {
   DestinationRecommendationResponse,
   ShareResponse,
   PublicShareView,
+  RefinementRequest,
+  RefinementResponse,
+  ItineraryVersionItem,
+  ItineraryVersionListResponse,
+  Collaborator,
 } from '../types';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 let authToken: string | null = localStorage.getItem('travel_auth_token') || 'demo-token';
 
@@ -134,28 +139,65 @@ export const api = {
     });
   },
 
-  // PDF Export
-  async exportItineraryPdf(itineraryId: string, filename: string = 'Itinerary.pdf'): Promise<void> {
+  // Conversational Refinement & Version History
+  async refineItinerary(tripId: string, data: RefinementRequest): Promise<RefinementResponse> {
+    return apiRequest<RefinementResponse>(`/api/v1/itineraries/${tripId}/refine`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getItineraryVersions(tripId: string): Promise<ItineraryVersionListResponse> {
+    return apiRequest<ItineraryVersionListResponse>(`/api/v1/itineraries/${tripId}/versions`);
+  },
+
+  async restoreItineraryVersion(tripId: string, version: number): Promise<Itinerary> {
+    return apiRequest<Itinerary>(`/api/v1/itineraries/${tripId}/versions/${version}/restore`, {
+      method: 'POST',
+    });
+  },
+
+  async getItineraryVersionSnapshot(tripId: string, version: number): Promise<any> {
+    return apiRequest<any>(`/api/v1/itineraries/${tripId}/versions/${version}`);
+  },
+
+  // Multi-format Export (PDF/HTML, Markdown, iCal .ics, JSON)
+  async exportItinerary(
+    itineraryId: string,
+    format: 'pdf' | 'markdown' | 'ics' | 'json' = 'pdf',
+    filename?: string
+  ): Promise<void> {
     const headers: Record<string, string> = {};
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
-    const response = await fetch(`${API_BASE}/api/v1/itineraries/${itineraryId}/export`, {
+    const response = await fetch(`${API_BASE}/api/v1/itineraries/${itineraryId}/export?format=${format}`, {
       method: 'POST',
       headers,
     });
     if (!response.ok) {
-      throw new Error('Failed to generate PDF document');
+      throw new Error(`Failed to export itinerary in ${format.toUpperCase()} format`);
     }
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
-    link.download = filename;
+
+    const extMap: Record<string, string> = {
+      pdf: 'html',
+      markdown: 'md',
+      ics: 'ics',
+      json: 'json',
+    };
+    link.download = filename || `Itinerary.${extMap[format] || format}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(downloadUrl);
+  },
+
+  async exportItineraryPdf(itineraryId: string, filename: string = 'Itinerary.html'): Promise<void> {
+    return this.exportItinerary(itineraryId, 'pdf', filename);
   },
 
   // Sharing
@@ -174,11 +216,132 @@ export const api = {
     });
   },
 
-  // Destination Recommendations
+  // Collaborators
+  async getCollaborators(tripId: string): Promise<Collaborator[]> {
+    return apiRequest<Collaborator[]>(`/api/v1/trips/${tripId}/collaborators`);
+  },
+
+  async addCollaborator(tripId: string, email: string, role: 'viewer' | 'editor' = 'viewer'): Promise<Collaborator> {
+    return apiRequest<Collaborator>(`/api/v1/trips/${tripId}/collaborators`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+  },
+
+  async updateCollaborator(tripId: string, collaboratorId: string, role: 'viewer' | 'editor'): Promise<Collaborator> {
+    return apiRequest<Collaborator>(`/api/v1/trips/${tripId}/collaborators/${collaboratorId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  async removeCollaborator(tripId: string, collaboratorId: string): Promise<void> {
+    return apiRequest<void>(`/api/v1/trips/${tripId}/collaborators/${collaboratorId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Destination & Activity Recommendations
   async discoverDestinations(data: DestinationDiscoveryRequest): Promise<DestinationRecommendationResponse> {
     return apiRequest<DestinationRecommendationResponse>('/api/v1/recommendations/destinations', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
+  async recommendActivities(data: any): Promise<any> {
+    return apiRequest<any>('/api/v1/recommendations/activities', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async refineRecommendations(data: any): Promise<any> {
+    return apiRequest<any>('/api/v1/recommendations/refine', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // History Management
+  async getHistory(): Promise<{ history: any[]; total_count: number }> {
+    return apiRequest<{ history: any[]; total_count: number }>('/api/v1/history');
+  },
+  async getHistoryItem(id: string): Promise<any> {
+    return apiRequest<any>(`/api/v1/history/${id}`);
+  },
+
+  // Route Optimization & Pacing
+  async optimizeRoute(stops: any[], pace: string = 'moderate', transitMode: string = 'driving') {
+    return apiRequest<{
+      optimized_stops: any[];
+      legs: any[];
+      warnings: string[];
+      calculation_method: string;
+      distance_source: string;
+    }>('/api/v1/routes/optimize', {
+      method: 'POST',
+      body: JSON.stringify({ stops, travel_pace: pace, transit_mode: transitMode }),
+    });
+  },
+  async scheduleRoute(stops: any[], pace: string = 'moderate', dayStartTime: string = '09:00', dayEndTime: string = '21:00') {
+    return apiRequest<any>('/api/v1/routes/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ stops, travel_pace: pace, day_start_time: dayStartTime, day_end_time: dayEndTime }),
+    });
+  },
+  async optimizeTripItinerary(tripId: string, travelPace: string = 'moderate') {
+    return apiRequest<Itinerary>(`/api/v1/itineraries/${tripId}/optimize?travel_pace=${travelPace}`, {
+      method: 'POST',
+    });
+  },
+  async getOptimizedItinerary(tripId: string) {
+    return apiRequest<Itinerary>(`/api/v1/itineraries/${tripId}/optimized`);
+  },
+  async compareRoutes(originalStops: any[], optimizedStops: any[], pace: string = 'moderate') {
+    return apiRequest<any>('/api/v1/routes/compare', {
+      method: 'POST',
+      body: JSON.stringify({ original_stops: originalStops, optimized_stops: optimizedStops, travel_pace: pace }),
+    });
+  },
+
+  // Authentication
+  async register(data: { email: string; password: string; display_name?: string; preferred_currency?: string }) {
+    const res = await apiRequest<{ access_token: string; user: any }>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res.access_token) {
+      setAuthToken(res.access_token);
+    }
+    return res;
+  },
+
+  async login(data: { email: string; password: string }) {
+    const res = await apiRequest<{ access_token: string; user: any }>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res.access_token) {
+      setAuthToken(res.access_token);
+    }
+    return res;
+  },
+};
+
+// Export tripsAPI directly for trip lifecycle operations
+export const tripsAPI = {
+  getTrips: api.getTrips,
+  getTrip: api.getTrip,
+  getTripById: api.getTrip,
+  createTrip: api.createTrip,
+  updateTrip: api.updateTrip,
+  deleteTrip: api.deleteTrip,
+  generateItinerary: api.generateItinerary,
+  getTripItineraries: api.getTripItineraries,
+  getCollaborators: api.getCollaborators,
+  addCollaborator: api.addCollaborator,
+  removeCollaborator: api.removeCollaborator,
+  getHistory: api.getHistory,
+  getHistoryItem: api.getHistoryItem,
+  recommendActivities: api.recommendActivities,
+  refineRecommendations: api.refineRecommendations,
 };

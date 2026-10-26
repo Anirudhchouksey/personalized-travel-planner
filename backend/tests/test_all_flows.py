@@ -44,6 +44,7 @@ def test_trip_crud_and_validation(client: TestClient):
         "travel_preferences": {
             "travel_vibe": "cultural",
             "travel_pace": "moderate",
+            "travel_style": "standard",
             "interests": ["temples", "tea ceremonies", "local markets"],
             "preferred_transportation": ["walking", "public_transit"],
             "dietary_requirements": ["vegetarian options"]
@@ -55,20 +56,28 @@ def test_trip_crud_and_validation(client: TestClient):
     trip_id = created_trip["id"]
     assert created_trip["title"] == "Autumn in Kyoto"
 
-    # 3. Retrieve trips list
+    # 3. Retrieve trips list & single trip
     res_list = client.get("/api/v1/trips")
     assert res_list.status_code == 200
     trips = res_list.json()
     assert any(t["id"] == trip_id for t in trips)
 
-    # 4. Patch trip
+    res_single = client.get(f"/api/v1/trips/{trip_id}")
+    assert res_single.status_code == 200
+    assert res_single.json()["id"] == trip_id
+
+    # 4. Update trip via PUT and PATCH
+    res_put = client.put(f"/api/v1/trips/{trip_id}", json={"title": "Updated Kyoto Immersion via PUT"})
+    assert res_put.status_code == 200
+    assert res_put.json()["title"] == "Updated Kyoto Immersion via PUT"
+
     res_patch = client.patch(f"/api/v1/trips/{trip_id}", json={"title": "Updated Kyoto Journey"})
     assert res_patch.status_code == 200
     assert res_patch.json()["title"] == "Updated Kyoto Journey"
 
-    # 5. Generate AI Itinerary
-    res_gen = client.post(f"/api/v1/trips/{trip_id}/generate", json={"provider_override": "mock"})
-    assert res_gen.status_code == 200
+    # 5. Generate AI Itinerary via POST /api/v1/itineraries/generate
+    res_gen = client.post("/api/v1/itineraries/generate", json={"trip_id": trip_id, "provider_override": "mock"})
+    assert res_gen.status_code == 201
     itin = res_gen.json()
     assert itin["trip_id"] == trip_id
     assert len(itin["days"]) > 0
@@ -77,7 +86,18 @@ def test_trip_crud_and_validation(client: TestClient):
     day_id = first_day["id"]
     assert len(first_day["activities"]) > 0
 
-    # 6. Regenerate single day with feedback
+    # 6. Retrieve itinerary by trip_id via GET /api/v1/itineraries/{trip_id}
+    res_get_itin = client.get(f"/api/v1/itineraries/{trip_id}")
+    assert res_get_itin.status_code == 200
+    assert res_get_itin.json()["id"] == itin["id"]
+
+    # 7. Update itinerary via PUT /api/v1/itineraries/{trip_id}
+    res_update_itin = client.put(f"/api/v1/itineraries/{trip_id}", json={
+        "structured_itinerary": {"overall_summary": "Handcrafted customized Kyoto itinerary"}
+    })
+    assert res_update_itin.status_code == 200
+
+    # 8. Regenerate single day with feedback
     res_regen_day = client.post(
         f"/api/v1/itineraries/{itin['id']}/days/{day_id}/regenerate",
         json={"feedback": "Make this day more focused on artisan matcha tea and low walking"}
@@ -87,13 +107,25 @@ def test_trip_crud_and_validation(client: TestClient):
     assert updated_day["id"] == day_id
     assert len(updated_day["activities"]) > 0
 
-    # 7. Test PDF Export
+    # 9. Test PDF Export
     res_export = client.post(f"/api/v1/itineraries/{itin['id']}/export")
     assert res_export.status_code == 200
     assert res_export.headers["content-type"] == "application/pdf"
     assert res_export.content.startswith(b"%PDF")
 
-    # 8. Test Share link creation & Public read
+    # 10. History management verification
+    res_history = client.get("/api/v1/history")
+    assert res_history.status_code == 200
+    history_data = res_history.json()
+    assert history_data["total_count"] > 0
+    assert len(history_data["history"]) > 0
+
+    first_hist_id = history_data["history"][0]["id"]
+    res_hist_item = client.get(f"/api/v1/history/{first_hist_id}")
+    assert res_hist_item.status_code == 200
+    assert res_hist_item.json()["id"] == first_hist_id
+
+    # 11. Test Share link creation & Public read
     res_share = client.post("/api/v1/shares", json={"trip_id": trip_id, "expires_in_days": 14})
     assert res_share.status_code == 201
     share_data = res_share.json()
@@ -115,13 +147,14 @@ def test_trip_crud_and_validation(client: TestClient):
     res_revoked_pub = client.get(f"/api/v1/shares/{share_token}")
     assert res_revoked_pub.status_code == 404
 
-    # 9. Delete Trip
+    # 12. Delete Trip
     res_del = client.delete(f"/api/v1/trips/{trip_id}")
     assert res_del.status_code == 204
 
 def test_destination_recommendations(client: TestClient):
     payload = {
         "travel_vibe": "cultural",
+        "travel_style": "standard",
         "budget_amount": 2500.0,
         "currency": "USD",
         "duration_days": 7,
@@ -137,3 +170,37 @@ def test_destination_recommendations(client: TestClient):
     assert "destination" in first
     assert "match_score" in first
     assert first["match_score"] >= 60
+
+def test_activity_recommendations_and_refine(client: TestClient):
+    # 1. Activity Recommendations (attractions, dining, adventure, cultural)
+    act_payload = {
+        "destination": "Kyoto, Japan",
+        "budget_level": "moderate",
+        "interests": ["Culture & History", "Culinary & Food"],
+        "travel_pace": "moderate",
+        "dietary_requirements": ["Vegetarian"],
+        "accessibility_requirements": ["Step-free"],
+        "currency": "USD"
+    }
+    res_act = client.post("/api/v1/recommendations/activities", json=act_payload)
+    assert res_act.status_code == 200
+    act_data = res_act.json()
+    assert act_data["destination"] == "Kyoto, Japan"
+    assert len(act_data["attractions"]) > 0
+    assert len(act_data["dining"]) > 0
+    assert len(act_data["adventure"]) > 0
+    assert len(act_data["cultural_experiences"]) > 0
+    assert len(act_data["practical_tips"]) > 0
+
+    # 2. Refine recommendations
+    refine_payload = {
+        "destination": "Kyoto, Japan",
+        "feedback": "Include more plant-based culinary spots and zen garden strolls",
+        "current_recommendations": act_data
+    }
+    res_refine = client.post("/api/v1/recommendations/refine", json=refine_payload)
+    assert res_refine.status_code == 200
+    refine_data = res_refine.json()
+    assert refine_data["destination"] == "Kyoto, Japan"
+    assert "feedback_applied" in refine_data
+    assert "result" in refine_data

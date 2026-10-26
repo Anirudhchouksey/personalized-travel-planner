@@ -40,19 +40,19 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2 text-sm text-slate-600">
               <li className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-forest-500"></span>
-                Groq API (Llama 3.3 70B)
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                Hugging Face Inference
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                Ollama Local LLM
+                Google Gemini API (Gemini Flash)
               </li>
               <li className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                Supabase PostgreSQL
+                Supabase PostgreSQL (RLS)
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                OpenStreetMap Routing
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Offline Mock Fallback
               </li>
             </ul>
           </div>

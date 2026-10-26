@@ -1,0 +1,104 @@
+{
+  "evaluation_timestamp": "2026-10-25",
+  "provider": "mock",
+  "total_scenarios": 5,
+  "average_quality_score": 95.0,
+  "overall_status": "PASSED",
+  "scenarios": [
+    {
+      "scenario_id": "scenario_01_solo_backpacker",
+      "title": "Solo Backpacker Adventure in Chiang Mai",
+      "destination": "Chiang Mai, Thailand",
+      "days_count": 3,
+      "activities_count": 11,
+      "score_pct": 87.5,
+      "metrics": {
+        "schema_validity": true,
+        "date_consistency": true,
+        "completeness": true,
+        "pacing_alignment": true,
+        "budget_consistency": true,
+        "preference_adherence": false,
+        "context_preservation": true,
+        "refinement_fidelity": true
+      },
+      "status": "PASS"
+    },
+    {
+      "scenario_id": "scenario_02_couple_luxury_cultural",
+      "title": "Luxury Honeymoon in Kyoto",
+      "destination": "Kyoto, Japan",
+      "days_count": 5,
+      "activities_count": 13,
+      "score_pct": 100.0,
+      "metrics": {
+        "schema_validity": true,
+        "date_consistency": true,
+        "completeness": true,
+        "pacing_alignment": true,
+        "budget_consistency": true,
+        "preference_adherence": true,
+        "context_preservation": true,
+        "refinement_fidelity": true
+      },
+      "status": "PASS"
+    },
+    {
+      "scenario_id": "scenario_03_family_accessible",
+      "title": "Family Trip to London with Accessibility Needs",
+      "destination": "London, UK",
+      "days_count": 4,
+      "activities_count": 12,
+      "score_pct": 100.0,
+      "metrics": {
+        "schema_validity": true,
+        "date_consistency": true,
+        "completeness": true,
+        "pacing_alignment": true,
+        "budget_consistency": true,
+        "preference_adherence": true,
+        "context_preservation": true,
+        "refinement_fidelity": true
+      },
+      "status": "PASS"
+    },
+    {
+      "scenario_id": "scenario_04_friends_nature_food",
+      "title": "Friends Hiking and Culinary Getaway",
+      "destination": "Okinawa, Japan",
+      "days_count": 4,
+      "activities_count": 12,
+      "score_pct": 100.0,
+      "metrics": {
+        "schema_validity": true,
+        "date_consistency": true,
+        "completeness": true,
+        "pacing_alignment": true,
+        "budget_consistency": true,
+        "preference_adherence": true,
+        "context_preservation": true,
+        "refinement_fidelity": true
+      },
+      "status": "PASS"
+    },
+    {
+      "scenario_id": "scenario_05_weekend_quick_escape",
+      "title": "48-Hour Weekend Sightseeing in Rome",
+      "destination": "Rome, Italy",
+      "days_count": 2,
+      "activities_count": 7,
+      "score_pct": 87.5,
+      "metrics": {
+        "schema_validity": true,
+        "date_consistency": true,
+        "completeness": true,
+        "pacing_alignment": true,
+        "budget_consistency": true,
+        "preference_adherence": false,
+        "context_preservation": true,
+        "refinement_fidelity": true
+      },
+      "status": "PASS"
+    }
+  ]
+}

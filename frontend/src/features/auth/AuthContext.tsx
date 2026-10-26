@@ -22,9 +22,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+const supabaseUrl = rawSupabaseUrl ? rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '') : undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+const isSupabaseConfigured = Boolean(
+  supabaseUrl && 
+  supabaseAnonKey && 
+  !supabaseUrl.includes('your-project-id') &&
+  !supabaseAnonKey.includes('your-supabase-anon-key')
+);
 
 let supabase: SupabaseClient | null = null;
 if (isSupabaseConfigured) {

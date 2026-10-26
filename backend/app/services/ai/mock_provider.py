@@ -21,12 +21,122 @@ class MockProvider(LLMProvider):
         if "regenerate day" in prompt_lower:
             return self._generate_mock_day_regeneration(prompt)
 
-        # 2. Destination Discovery / Recommendations request
+        # 2. Activity Recommendations request
+        if "categorized travel activities" in prompt_lower or "activity recommendations" in prompt_lower:
+            return self._generate_mock_activities(prompt)
+
+        # 3. Recommendations Refinement request
+        if "refine travel recommendations" in prompt_lower:
+            return self._generate_mock_refine(prompt)
+
+        # 4. Destination Discovery / Recommendations request
         if "recommend 3-4 top destination options" in prompt_lower or "candidate destinations" in prompt_lower:
             return self._generate_mock_destinations(prompt_lower)
 
-        # 3. Otherwise, generate a full multi-day itinerary
+        # 5. Otherwise, generate a full multi-day itinerary
         return self._generate_mock_full_itinerary(prompt)
+
+    def _generate_mock_activities(self, prompt: str) -> Dict[str, Any]:
+        return {
+            "attractions": [
+                {
+                    "name": "Historic Landmark & Grand Gardens",
+                    "category": "attraction",
+                    "description": "Iconic cultural monument and scenic botanical walking path.",
+                    "estimated_cost": 18.0,
+                    "currency": "USD",
+                    "location_name": "Historic District",
+                    "duration_minutes": 120,
+                    "practical_tips": "Book morning tickets to avoid crowds.",
+                    "verification_status": "verified"
+                },
+                {
+                    "name": "Panoramic City Viewpoint & Plaza",
+                    "category": "attraction",
+                    "description": "Scenic vantage point overlooking the old city center.",
+                    "estimated_cost": 0.0,
+                    "currency": "USD",
+                    "location_name": "Old Town Hill",
+                    "duration_minutes": 60,
+                    "practical_tips": "Best viewed during sunset golden hour.",
+                    "verification_status": "verified"
+                }
+            ],
+            "dining": [
+                {
+                    "name": "Local Heritage Bistro & Market Dining",
+                    "category": "dining",
+                    "description": "Authentic regional specialties made with fresh local ingredients.",
+                    "estimated_cost": 28.0,
+                    "currency": "USD",
+                    "location_name": "Central Market",
+                    "duration_minutes": 90,
+                    "practical_tips": "Accommodates dietary preferences including vegetarian options.",
+                    "verification_status": "estimated"
+                },
+                {
+                    "name": "Artisanal Coffee & Pastry Roastery",
+                    "category": "dining",
+                    "description": "Cozy independent cafe specializing in single-origin pour-overs.",
+                    "estimated_cost": 8.0,
+                    "currency": "USD",
+                    "location_name": "Arts Quarter",
+                    "duration_minutes": 45,
+                    "practical_tips": "Outdoor seating available with step-free entry.",
+                    "verification_status": "estimated"
+                }
+            ],
+            "adventure": [
+                {
+                    "name": "Guided Forest & Valley Nature Hike",
+                    "category": "adventure",
+                    "description": "Scenic trail through coastal cliffs or forested foothills.",
+                    "estimated_cost": 35.0,
+                    "currency": "USD",
+                    "location_name": "National Park Trailhead",
+                    "duration_minutes": 180,
+                    "practical_tips": "Sturdy walking footwear recommended.",
+                    "verification_status": "estimated"
+                }
+            ],
+            "cultural_experiences": [
+                {
+                    "name": "Traditional Artisan Workshop & Tasting",
+                    "category": "cultural",
+                    "description": "Hands-on masterclass with local craftspeople and culinary artisans.",
+                    "estimated_cost": 30.0,
+                    "currency": "USD",
+                    "location_name": "Guild Quarter",
+                    "duration_minutes": 90,
+                    "practical_tips": "Interactive session suitable for all group sizes.",
+                    "verification_status": "verified"
+                }
+            ],
+            "practical_tips": [
+                "Purchase an all-day transit pass at main train stations to save on fares.",
+                "Most cultural attractions offer discounted tickets when reserved online."
+            ]
+        }
+
+    def _generate_mock_refine(self, prompt: str) -> Dict[str, Any]:
+        return {
+            "destination": "Refined Destination Choices",
+            "refinement_summary": "Adjusted recommendations based on updated dietary and pacing feedback.",
+            "recommendations": [
+                {
+                    "destination": "Kyoto (Step-Free & Plant-Based Focus)",
+                    "country": "Japan",
+                    "match_score": 98,
+                    "tagline": "Tranquil zen gardens with accessible pathways and vibrant shojin ryori dining",
+                    "highlights": ["Tenryu-ji Temple", "Pontocho Dining Alley", "Kamogawa Riverside Walk"],
+                    "estimated_cost_range": "$1,900 - $2,700",
+                    "best_season": "October - November",
+                    "reasoning": "Directly incorporates your preference for step-free routes and specialized dining.",
+                    "suggested_duration_days": 7,
+                    "accessibility_rating": "Excellent"
+                }
+            ]
+        }
 
     def _generate_mock_destinations(self, prompt_lower: str) -> Dict[str, Any]:
         return {

@@ -1,6 +1,7 @@
 export interface TravelPreferences {
   travel_vibe: string;
   travel_pace: 'relaxed' | 'moderate' | 'fast';
+  travel_style?: 'budget' | 'standard' | 'luxury' | 'backpacker' | 'family';
   interests: string[];
   preferred_transportation: string[];
   dietary_requirements: string[];
@@ -126,6 +127,14 @@ export interface DestinationOption {
   reasoning: string;
   suggested_duration_days: number;
   accessibility_rating: string;
+  estimated_budget_breakdown?: {
+    daily_accommodation: number;
+    daily_food: number;
+    daily_activities: number;
+    daily_transport: number;
+    total_estimated: number;
+    currency: string;
+  };
 }
 
 export interface DestinationDiscoveryRequest {
@@ -160,3 +169,51 @@ export interface PublicShareView {
   itinerary?: Itinerary;
   is_shared_view: boolean;
 }
+
+export interface RefinementMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  summary_of_changes?: string[];
+  timestamp: string;
+}
+
+export interface RefinementRequest {
+  message: string;
+  target_day?: number;
+  preserve_activity_ids?: string[];
+  conversation_history?: { role: string; content: string }[];
+}
+
+export interface RefinementResponse {
+  itinerary: Itinerary;
+  assistant_message: string;
+  version: number;
+  summary_of_changes: string[];
+}
+
+export interface ItineraryVersionItem {
+  version: number;
+  user_instruction?: string;
+  summary?: string;
+  created_at: string;
+  total_days: number;
+  estimated_total_cost: number;
+}
+
+export interface ItineraryVersionListResponse {
+  trip_id: string;
+  current_version: number;
+  versions: ItineraryVersionItem[];
+}
+
+export interface Collaborator {
+  id: string;
+  trip_id: string;
+  email: string;
+  role: 'viewer' | 'editor';
+  user_id?: string;
+  created_at: string;
+}
+
+

@@ -1,0 +1,10 @@
+# Environment secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Bytecode & Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/

@@ -244,6 +244,21 @@ export const DiscoverPage: React.FC = () => {
                     <span className="font-semibold text-slate-800">{item.best_season}</span>
                   </div>
                 </div>
+
+                {/* Estimated Budget Breakdown */}
+                {item.estimated_budget_breakdown && (
+                  <div className="pt-2.5 mt-2 bg-sand-50/70 p-2.5 rounded-xl border border-sand-200/80 text-[11px] text-slate-600 space-y-1">
+                    <span className="block font-bold text-[10px] uppercase text-forest-800 tracking-wider">
+                      Est. Daily Budget Breakdown
+                    </span>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      <span>🏨 Stay: {item.estimated_budget_breakdown.currency} {item.estimated_budget_breakdown.daily_accommodation}/d</span>
+                      <span>🍽️ Meals: {item.estimated_budget_breakdown.currency} {item.estimated_budget_breakdown.daily_food}/d</span>
+                      <span>🎟️ Sights: {item.estimated_budget_breakdown.currency} {item.estimated_budget_breakdown.daily_activities}/d</span>
+                      <span>🚇 Transit: {item.estimated_budget_breakdown.currency} {item.estimated_budget_breakdown.daily_transport}/d</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Button */}
