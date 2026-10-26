@@ -25,10 +25,12 @@ import {
 } from 'lucide-react';
 import { tripsAPI } from '../api/client';
 import { TripCreate } from '../types';
+import { useAuth } from '../features/auth/AuthContext';
 
 export const WizardPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user, loginAsDemo } = useAuth();
 
   // Initial values, prefilled if redirected from Discover
   const prefillDest = searchParams.get('destination') || '';
@@ -36,6 +38,7 @@ export const WizardPage: React.FC = () => {
 
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Loading quotes / tips while generating
@@ -195,8 +198,18 @@ export const WizardPage: React.FC = () => {
     setStep((prev) => Math.max(1, prev - 1));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (proceedAsDemo = false) => {
     if (isSubmitting) return;
+
+    if (!user && !proceedAsDemo) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (proceedAsDemo && !user) {
+      loginAsDemo();
+    }
+
     try {
       setIsSubmitting(true);
       setError(null);
@@ -877,7 +890,7 @@ export const WizardPage: React.FC = () => {
           ) : (
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={() => handleSubmit(false)}
               disabled={isSubmitting}
               className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-forest-800 hover:bg-forest-900 text-white text-sm font-extrabold shadow-md hover:shadow-lg transition-all disabled:opacity-50"
             >
@@ -896,6 +909,61 @@ export const WizardPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Guest Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-sand-200 max-w-md w-full p-6 sm:p-8 shadow-xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-2xl bg-forest-50 text-forest-800 flex items-center justify-center mx-auto mb-3">
+                <Compass className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Save Your Itinerary</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                You are currently exploring as a guest. To save this trip and return to it anytime, please sign in or create an account.
+              </p>
+            </div>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={() => navigate('/login?redirect=/wizard')}
+                className="w-full py-3 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow-sm transition-all text-center"
+              >
+                Sign In to My Account
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/register?redirect=/wizard')}
+                className="w-full py-3 rounded-xl bg-sand-100 hover:bg-sand-200 text-slate-800 font-bold text-sm transition-colors text-center"
+              >
+                Create Free Account
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuthModal(false);
+                  handleSubmit(true);
+                }}
+                className="w-full py-2.5 rounded-xl border border-dashed border-forest-300 bg-forest-50/50 hover:bg-forest-50 text-forest-900 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-forest-700" />
+                Generate Now as Demo Explorer
+              </button>
+            </div>
+
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(false)}
+                className="text-xs text-slate-400 hover:text-slate-600 font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

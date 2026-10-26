@@ -21,7 +21,7 @@ import { Badge } from '../components/Badge';
 import { useAuth } from '../features/auth/AuthContext';
 
 export const DashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,8 +29,12 @@ export const DashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadTrips();
-  }, []);
+    if (user) {
+      loadTrips();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   const loadTrips = async () => {
     try {
@@ -62,6 +66,49 @@ export const DashboardPage: React.FC = () => {
       t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.destination.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="bg-white rounded-3xl border border-sand-200 p-8 sm:p-12 text-center shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-forest-50 text-forest-800 flex items-center justify-center mx-auto mb-5 shadow-sm">
+            <Compass className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Sign In to Access Your Trips
+          </h2>
+          <p className="text-sm sm:text-base text-slate-600 mt-2.5 max-w-lg mx-auto leading-relaxed">
+            Create an account or sign in to save custom itineraries, view day-by-day schedules, and manage your travel adventures.
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              to="/login?redirect=/dashboard"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow transition-all"
+            >
+              Sign In
+            </Link>
+            <Link
+              to="/register?redirect=/dashboard"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-sand-100 hover:bg-sand-200 text-slate-800 font-bold text-sm transition-colors"
+            >
+              Create Account
+            </Link>
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-sand-100">
+            <button
+              onClick={() => loginAsDemo()}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 hover:text-forest-900 hover:underline"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Preview with Demo Explorer Account
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">

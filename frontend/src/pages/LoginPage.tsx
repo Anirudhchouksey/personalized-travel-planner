@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Compass, Sparkles, ArrowRight, Lock, Mail, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Compass, Sparkles, Lock, Mail, AlertCircle } from 'lucide-react';
 import { useAuth } from '../features/auth/AuthContext';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, loginAsDemo, supabaseConfigured } = useAuth();
+  const location = useLocation();
+  const { user, login, loginAsDemo, supabaseConfigured } = useAuth();
+
+  const searchParams = new URLSearchParams(location.search);
+  const redirectPath = searchParams.get('redirect') || '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, navigate, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,9 +28,9 @@ export const LoginPage: React.FC = () => {
       setLoading(true);
       setError(null);
       await login(email, password);
-      navigate('/dashboard');
+      navigate(redirectPath, { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -28,7 +38,7 @@ export const LoginPage: React.FC = () => {
 
   const handleDemoLogin = () => {
     loginAsDemo();
-    navigate('/dashboard');
+    navigate(redirectPath, { replace: true });
   };
 
   return (
@@ -40,7 +50,7 @@ export const LoginPage: React.FC = () => {
           </div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Sign In to WanderAI</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Access your saved itineraries and travel preferences.
+            Access your saved itineraries, custom routes, and travel preferences.
           </p>
         </div>
 
@@ -104,7 +114,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 1-Click Demo Login */}
+        {/* 1-Click Demo Login Button (Only activated on user action) */}
         <button
           type="button"
           onClick={handleDemoLogin}
@@ -116,7 +126,10 @@ export const LoginPage: React.FC = () => {
 
         <p className="text-center text-xs text-slate-500 pt-2">
           Don't have an account yet?{' '}
-          <Link to="/register" className="font-semibold text-forest-800 hover:underline">
+          <Link
+            to={redirectPath !== '/dashboard' ? `/register?redirect=${encodeURIComponent(redirectPath)}` : '/register'}
+            className="font-semibold text-forest-800 hover:underline"
+          >
             Create account
           </Link>
         </p>

@@ -89,9 +89,15 @@ export const Navbar: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+                  className="px-3.5 py-2 text-sm font-medium text-slate-700 hover:text-forest-800 transition-colors"
                 >
                   Sign In
+                </Link>
+                <Link
+                  to="/register"
+                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-forest-800 hover:bg-forest-900 text-white shadow-xs transition-all hover:shadow"
+                >
+                  Create Account
                 </Link>
               </div>
             )}
@@ -143,7 +149,7 @@ export const Navbar: React.FC = () => {
             <Plus className="w-4 h-4" />
             Plan New Trip
           </Link>
-          {user && (
+          {user ? (
             <div className="pt-2 border-t border-sand-100 flex items-center justify-between px-3">
               <span className="text-xs text-slate-500">Logged in as {user.displayName}</span>
               <button
@@ -151,10 +157,27 @@ export const Navbar: React.FC = () => {
                   logout();
                   setMobileMenuOpen(false);
                 }}
-                className="text-xs text-red-600 font-medium"
+                className="text-xs text-red-600 font-medium hover:underline"
               >
                 Sign out
               </button>
+            </div>
+          ) : (
+            <div className="pt-3 border-t border-sand-100 flex items-center gap-2 px-3">
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex-1 text-center py-2 text-xs font-semibold text-slate-700 bg-sand-100 hover:bg-sand-200 rounded-lg transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                to="/register"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex-1 text-center py-2 text-xs font-semibold text-white bg-forest-800 hover:bg-forest-900 rounded-lg transition-colors"
+              >
+                Create Account
+              </Link>
             </div>
           )}
         </div>

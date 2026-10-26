@@ -19,14 +19,26 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
-let authToken: string | null = localStorage.getItem('travel_auth_token') || 'demo-token';
+let authToken: string | null = (() => {
+  try {
+    const mode = localStorage.getItem('travel_auth_mode');
+    return mode ? localStorage.getItem('travel_auth_token') : null;
+  } catch {
+    return null;
+  }
+})();
 
 export const setAuthToken = (token: string | null) => {
   authToken = token;
-  if (token) {
-    localStorage.setItem('travel_auth_token', token);
-  } else {
-    localStorage.removeItem('travel_auth_token');
+  try {
+    if (token) {
+      localStorage.setItem('travel_auth_token', token);
+    } else {
+      localStorage.removeItem('travel_auth_token');
+      localStorage.removeItem('travel_auth_mode');
+    }
+  } catch {
+    // ignore storage exceptions
   }
 };
 

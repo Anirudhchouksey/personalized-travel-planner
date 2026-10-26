@@ -1,31 +1,70 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Compass, Sparkles, User, Lock, Mail, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Compass, User, Lock, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../features/auth/AuthContext';
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
-  const { signup, loginAsDemo } = useAuth();
+  const location = useLocation();
+  const { user, signup } = useAuth();
+
+  const searchParams = new URLSearchParams(location.search);
+  const redirectPath = searchParams.get('redirect') || '/dashboard';
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, navigate, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setLoading(true);
       setError(null);
-      await signup(email, password, name);
-      navigate('/dashboard');
+      const res = await signup(email, password, name);
+      if (res?.requiresVerification) {
+        setVerificationSent(true);
+      } else {
+        navigate(redirectPath, { replace: true });
+      }
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
+
+  if (verificationSent) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <div className="bg-white rounded-3xl border border-sand-200 p-8 shadow-sm space-y-6 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-forest-50 text-forest-700 flex items-center justify-center mx-auto shadow-sm">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Check Your Email</h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            We sent a verification link to <span className="font-semibold text-slate-800">{email}</span>. Please click the link to confirm your account and then sign in.
+          </p>
+          <div className="pt-2">
+            <Link
+              to={redirectPath !== '/dashboard' ? `/login?redirect=${encodeURIComponent(redirectPath)}` : '/login'}
+              className="w-full inline-block py-3 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow transition-all"
+            >
+              Go to Sign In
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
@@ -111,7 +150,10 @@ export const RegisterPage: React.FC = () => {
 
         <p className="text-center text-xs text-slate-500 pt-2">
           Already registered?{' '}
-          <Link to="/login" className="font-semibold text-forest-800 hover:underline">
+          <Link
+            to={redirectPath !== '/dashboard' ? `/login?redirect=${encodeURIComponent(redirectPath)}` : '/login'}
+            className="font-semibold text-forest-800 hover:underline"
+          >
             Sign in
           </Link>
         </p>
