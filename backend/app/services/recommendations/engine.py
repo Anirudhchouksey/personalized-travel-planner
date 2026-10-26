@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.schemas.recommendation import (
@@ -11,6 +13,8 @@ from app.schemas.recommendation import (
 )
 from app.services.ai.factory import get_llm_provider
 from app.services.prompts.builder import PromptBuilder
+
+logger = logging.getLogger(__name__)
 
 class RecommendationEngine:
     @staticmethod
@@ -39,11 +43,41 @@ class RecommendationEngine:
         system_prompt = PromptBuilder.get_system_prompt()
         user_prompt = PromptBuilder.build_destination_discovery_prompt(request.model_dump())
 
-        raw_result = await provider.generate_structured(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            expected_root_key="recommendations"
-        )
+        raw_result = None
+        active_provider_name = provider.name
+        try:
+            raw_result = await asyncio.wait_for(
+                provider.generate_structured(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    expected_root_key="recommendations"
+                ),
+                timeout=18.0
+            )
+        except Exception as e:
+            logger.warning("[RecommendationEngine] Live provider '%s' failed or timed out (%s). Activating resilient curated recommendations.", getattr(provider, "name", "ai"), e)
+            try:
+                from app.services.ai.mock_provider import MockProvider
+                mock_prov = MockProvider()
+                raw_result = await mock_prov.generate_structured(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    expected_root_key="recommendations"
+                )
+                active_provider_name = f"{getattr(provider, 'name', 'ai')}-fallback"
+            except Exception as mock_err:
+                logger.error("[RecommendationEngine] Fallback also failed: %s", mock_err)
+                raw_result = {"recommendations": []}
+
+        if not raw_result or "recommendations" not in raw_result or not raw_result["recommendations"]:
+            from app.services.ai.mock_provider import MockProvider
+            mock_prov = MockProvider()
+            raw_result = await mock_prov.generate_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                expected_root_key="recommendations"
+            )
+            active_provider_name = f"{getattr(provider, 'name', 'ai')}-fallback"
 
         recs_data = raw_result.get("recommendations", [])
         validated_options: List[DestinationOption] = []
@@ -69,7 +103,7 @@ class RecommendationEngine:
         return DestinationRecommendationResponse(
             recommendations=validated_options,
             generated_at=datetime.now(timezone.utc).isoformat(),
-            provider_used=provider.name
+            provider_used=active_provider_name
         )
 
     @staticmethod
@@ -81,11 +115,34 @@ class RecommendationEngine:
         system_prompt = PromptBuilder.get_system_prompt()
         user_prompt = PromptBuilder.build_activity_recommendations_prompt(request.model_dump())
 
-        raw_result = await provider.generate_structured(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            expected_root_key="attractions"
-        )
+        raw_result = None
+        active_provider_name = provider.name
+        try:
+            raw_result = await asyncio.wait_for(
+                provider.generate_structured(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    expected_root_key="attractions"
+                ),
+                timeout=18.0
+            )
+        except Exception as e:
+            logger.warning("[RecommendationEngine] Activity generation failed (%s). Activating resilient fallback.", e)
+            from app.services.ai.mock_provider import MockProvider
+            raw_result = await MockProvider().generate_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                expected_root_key="attractions"
+            )
+            active_provider_name = f"{getattr(provider, 'name', 'ai')}-fallback"
+
+        if not raw_result:
+            from app.services.ai.mock_provider import MockProvider
+            raw_result = await MockProvider().generate_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                expected_root_key="attractions"
+            )
 
         def parse_items(items_data: list, default_cat: str) -> List[ActivityItem]:
             parsed = []
@@ -114,7 +171,7 @@ class RecommendationEngine:
                 "Public transit passes provide cost-effective city travel."
             ]),
             generated_at=datetime.now(timezone.utc).isoformat(),
-            provider_used=provider.name
+            provider_used=active_provider_name
         )
 
     @staticmethod
@@ -126,16 +183,30 @@ class RecommendationEngine:
         system_prompt = PromptBuilder.get_system_prompt()
         user_prompt = PromptBuilder.build_recommendations_refine_prompt(request.model_dump())
 
-        raw_result = await provider.generate_structured(
-            prompt=user_prompt,
-            system_prompt=system_prompt
-        )
+        active_provider_name = provider.name
+        try:
+            raw_result = await asyncio.wait_for(
+                provider.generate_structured(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt
+                ),
+                timeout=18.0
+            )
+        except Exception as e:
+            logger.warning("[RecommendationEngine] Refine failed (%s). Using fallback.", e)
+            from app.services.ai.mock_provider import MockProvider
+            raw_result = await MockProvider().generate_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt
+            )
+            active_provider_name = f"{getattr(provider, 'name', 'ai')}-fallback"
+
         return {
             "destination": request.destination,
             "feedback_applied": request.feedback,
             "result": raw_result,
             "refined_at": datetime.now(timezone.utc).isoformat(),
-            "provider_used": provider.name
+            "provider_used": active_provider_name
         }
 
 recommendation_engine = RecommendationEngine()

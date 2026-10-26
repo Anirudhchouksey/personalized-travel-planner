@@ -61,7 +61,7 @@ class GeminiProvider(LLMProvider):
         """Returns prioritized candidate models for resilient generation during demand spikes."""
         candidates = [self.model]
         # High-availability Flash Lite & Flash fallback models
-        for fb in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite"]:
+        for fb in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]:
             if fb not in candidates:
                 candidates.append(fb)
         return candidates

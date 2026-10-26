@@ -46,10 +46,18 @@ async function apiRequest<T>(
   }
 
   const url = `${API_BASE}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    if (err?.name === 'TypeError' || err?.message?.toLowerCase().includes('fetch')) {
+      throw new Error('Unable to connect to the backend server. The service may be waking up (Render free tier takes ~30-50s on first load). Please retry in a few moments.');
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     let errorMessage = `API error ${response.status}: ${response.statusText}`;

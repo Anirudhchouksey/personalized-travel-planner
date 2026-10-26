@@ -179,8 +179,15 @@ export const DiscoverPage: React.FC = () => {
           ))}
         </div>
       ) : error ? (
-        <div className="p-6 rounded-2xl bg-red-50 border border-red-200 text-center text-red-700 text-sm">
-          {error}
+        <div className="p-6 rounded-2xl bg-red-50 border border-red-200 text-center text-red-700 text-sm flex flex-col items-center gap-3">
+          <p className="font-medium max-w-md">{error}</p>
+          <button
+            onClick={fetchRecommendations}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-xl transition shadow-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Try Again
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -4,7 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.routes import health, trips, itineraries, recommendations, shares, auth, history, routes
-from app.services.ai.base import LLMProviderError
+from app.services.ai.base import LLMProviderError as BaseLLMProviderError
+from app.core.exceptions import AppException, LLMProviderError as CoreLLMProviderError
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -37,16 +38,54 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = f"{process_time:.4f}s"
     return response
 
+# Helper for consistent CORS headers on error responses
+def _cors_headers(request: Request) -> dict:
+    origin = request.headers.get("origin", "*")
+    return {
+        "Access-Control-Allow-Origin": origin if origin else "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "*",
+        "Access-Control-Allow-Headers": "*",
+    }
+
 # Custom Exception Handlers
-@app.exception_handler(LLMProviderError)
-async def handle_llm_provider_error(request: Request, exc: LLMProviderError):
+@app.exception_handler(BaseLLMProviderError)
+@app.exception_handler(CoreLLMProviderError)
+async def handle_llm_provider_error(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content={
             "error": "AIProviderError",
             "message": str(exc),
-            "detail": "The AI provider encountered an error generating the structured itinerary. Please retry."
-        }
+            "detail": "The AI provider encountered an error generating recommendations. Please retry."
+        },
+        headers=_cors_headers(request)
+    )
+
+@app.exception_handler(AppException)
+async def handle_app_exception(request: Request, exc: AppException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.__class__.__name__,
+            "message": exc.message,
+            "details": exc.details
+        },
+        headers=_cors_headers(request)
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import logging
+    logging.getLogger("uvicorn.error").exception("Unhandled error on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": exc.__class__.__name__,
+            "message": str(exc),
+            "detail": "An internal server error occurred. Please retry."
+        },
+        headers=_cors_headers(request)
     )
 
 # Include Routers
