@@ -31,8 +31,15 @@ class GeminiProvider(LLMProvider):
         model: Optional[str] = None,
         timeout_seconds: float = 30.0
     ):
-        self.api_key = api_key if api_key is not None else settings.GEMINI_API_KEY
-        self.model = model if model is not None else (settings.GEMINI_MODEL or "gemini-2.5-flash")
+        raw_key = api_key if api_key is not None else settings.GEMINI_API_KEY
+        self.api_key = raw_key.strip().strip('"').strip("'") if raw_key else ""
+
+        raw_model = model if model is not None else (settings.GEMINI_MODEL or "gemini-3.5-flash")
+        # Sanitize model format: strip whitespace, quotes, and optional 'models/' prefix
+        cleaned_model = str(raw_model).strip().strip('"').strip("'").strip()
+        if cleaned_model.startswith("models/"):
+            cleaned_model = cleaned_model[len("models/"):].strip()
+        self.model = cleaned_model or "gemini-3.5-flash"
         self.timeout_seconds = timeout_seconds
 
         if not self.api_key:
@@ -60,8 +67,8 @@ class GeminiProvider(LLMProvider):
     def _get_candidate_models(self) -> list[str]:
         """Returns prioritized candidate models for resilient generation during demand spikes."""
         candidates = [self.model]
-        # High-availability Flash Lite & Flash fallback models
-        for fb in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]:
+        # Active Gemini 3.x production Flash models
+        for fb in ["gemini-3.5-flash", "gemini-3.5-flash-lite"]:
             if fb not in candidates:
                 candidates.append(fb)
         return candidates
@@ -111,8 +118,8 @@ class GeminiProvider(LLMProvider):
                 continue
             except errors.APIError as err:
                 code = getattr(err, "code", 500)
-                # If high demand (503), rate limit (429), or retired model (404), try next candidate model
-                if code in (503, 429, 404, 500) and model_name != candidates[-1]:
+                # If invalid model format (400), retired model (404), rate limit (429), or server error (500, 503), try next candidate model
+                if code in (400, 404, 429, 500, 503) and model_name != candidates[-1]:
                     continue
                 self._handle_api_error(err)
             except Exception as ex:
@@ -177,7 +184,8 @@ class GeminiProvider(LLMProvider):
                 continue
             except errors.APIError as err:
                 code = getattr(err, "code", 500)
-                if code in (503, 429, 404, 500) and model_name != candidates[-1]:
+                # If invalid model format (400), retired model (404), rate limit (429), or server error (500, 503), try next candidate model
+                if code in (400, 404, 429, 500, 503) and model_name != candidates[-1]:
                     continue
                 self._handle_api_error(err)
             except LLMResponseMalformedError:

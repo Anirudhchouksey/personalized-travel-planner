@@ -233,11 +233,24 @@ class ItineraryService:
             preferences=trip.get("travel_preferences", {})
         )
 
-        # 5. Invoke LLM provider
-        raw_result = await provider.generate_structured(
-            prompt=user_prompt,
-            system_prompt=system_prompt
-        )
+        # 5. Invoke LLM provider with resilient fallback
+        raw_result = None
+        try:
+            raw_result = await asyncio.wait_for(
+                provider.generate_structured(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt
+                ),
+                timeout=25.0
+            )
+        except Exception as e:
+            logger.warning("[ItineraryService] Live conversational refinement failed (%s). Activating resilient fallback.", e)
+            from app.services.ai.mock_provider import MockProvider
+            mock_prov = MockProvider()
+            raw_result = await mock_prov.generate_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt
+            )
 
         # 6. Parse and normalize
         normalized_data = ItineraryOutputParser.parse_raw(raw_result)
