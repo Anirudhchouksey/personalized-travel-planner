@@ -30,10 +30,17 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Backend Pytest Suite
+        env:
+          AI_PROVIDER: mock
+          SECRET_KEY: ci-test-secret-key-32-chars-long-abcde
+          SUPABASE_URL: ""
+          GEMINI_API_KEY: ""
         run: |
           python -m pytest tests/ -v
 
       - name: Run AI Quality & Prompt Effectiveness Benchmark
+        env:
+          AI_PROVIDER: mock
         run: |
           python tests/evaluate_ai_quality.py
 
@@ -59,7 +66,7 @@ jobs:
         run: npm ci
 
       - name: Run Vitest Suite
-        run: npm test -- --run
+        run: npm test
 
       - name: Verify Production Bundle Build
         run: npm run build

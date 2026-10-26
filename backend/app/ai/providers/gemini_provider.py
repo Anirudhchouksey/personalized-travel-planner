@@ -31,8 +31,8 @@ class GeminiProvider(LLMProvider):
         model: Optional[str] = None,
         timeout_seconds: float = 30.0
     ):
-        self.api_key = api_key or settings.GEMINI_API_KEY
-        self.model = model or settings.GEMINI_MODEL or "gemini-2.5-flash"
+        self.api_key = api_key if api_key is not None else settings.GEMINI_API_KEY
+        self.model = model if model is not None else (settings.GEMINI_MODEL or "gemini-2.5-flash")
         self.timeout_seconds = timeout_seconds
 
         if not self.api_key:

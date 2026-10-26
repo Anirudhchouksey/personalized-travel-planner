@@ -728,7 +728,7 @@ class Repository:
         if self.client:
             try:
                 res = self.client.table("trip_collaborators").select("*").eq("trip_id", trip_id).order("created_at", desc=False).execute()
-                if res.data is not None:
+                if res.data:
                     return res.data
             except Exception as e:
                 print(f"[Supabase Collaborators Fetch Error]: {e}")

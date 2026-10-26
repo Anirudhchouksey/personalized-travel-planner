@@ -16,7 +16,7 @@ def test_environment_settings_load_correctly():
     assert settings.APP_NAME is not None
     assert settings.ENVIRONMENT in ("development", "testing", "staging", "production")
     assert isinstance(settings.DEBUG, bool)
-    assert settings.GEMINI_MODEL in ("gemini-2.5-flash", "gemini-1.5-flash")
+    assert settings.GEMINI_MODEL in ("gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash")
     assert settings.API_PORT == 8000
     assert "http://localhost:5173" in settings.cors_origin_list
 

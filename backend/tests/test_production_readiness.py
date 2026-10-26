@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from datetime import date, timedelta
 from fastapi.testclient import TestClient
 from app.main import app
@@ -123,8 +124,9 @@ async def test_itinerary_preservation_on_failed_regeneration():
 
     failing_service = ItineraryService(provider=FailingProvider())
 
-    with pytest.raises(Exception):
-        await failing_service.regenerate_for_trip(trip["id"], "test-user-resilience", feedback="Make day 2 relaxed")
+    with patch("app.services.ai.mock_provider.MockProvider.generate_structured", side_effect=RuntimeError("Fallback failure")):
+        with pytest.raises(Exception):
+            await failing_service.regenerate_for_trip(trip["id"], "test-user-resilience", feedback="Make day 2 relaxed")
 
     # Check that previous itinerary remains active and untouched
     persisted_itin = await repository.get_itinerary_by_id(itin.id)
