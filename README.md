@@ -17,6 +17,22 @@ A production-ready, security-hardened, and performance-optimized AI Travel Plann
 
 ---
 
+## 📚 Project Documentation
+
+Explore the comprehensive project documentation in the [`docs/`](docs/) directory:
+
+- 🏛️ [**Architecture & System Design**](docs/architecture.md) — Multi-tier architecture, sequence diagrams, and failover design.
+- 🚀 [**Local Setup & Development Guide**](docs/setup-guide.md) — Step-by-step local setup for FastAPI backend, React frontend, and Docker.
+- 🔄 [**System & User Workflows**](docs/workflow.md) — Visual workflow diagrams of trip creation, regeneration, collaboration, and CI/CD.
+- 🌐 [**Production Deployment Guide**](docs/deployment.md) — Zero-cost deployment on Render, Vercel, and Supabase.
+- 🧪 [**Verification & Testing Strategy**](docs/testing.md) — 57 Pytest backend tests, 14 Vitest frontend tests, and GitHub Actions CI.
+- ⚠️ [**Known Limitations & Boundaries**](docs/limitations.md) — Free-tier limits (cold starts, rate limits) and implemented mitigations.
+- 🏁 [**Project Conclusion & Roadmap**](docs/conclusion.md) — Executive summary, retrospective lessons learned, and future phases.
+- 🔌 [**REST API Documentation**](docs/api.md) — Complete endpoint reference with request/response schemas.
+- 🗄️ [**Database Architecture & Schema**](docs/database.md) — Relational tables, constraints, and PostgreSQL RLS policies.
+
+---
+
 ## 1. Architecture Overview
 
 ```mermaid
